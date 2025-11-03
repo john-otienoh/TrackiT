@@ -1,75 +1,115 @@
-from fastapi import FastAPI, HTTPException, Body
-from pydantic import BaseModel
-from typing import Optional
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
 from habit_manager import get_user_habits_with_quote, create_user_habit
 from database import mark_habit_done, create_table
-import uvicorn
+import os
 
-app = FastAPI(title="Habit Tracker API", version="2.0.0")
+app = FastAPI(title="Motivational Habit Tracker API")
 create_table()
 
-class HabitCreate(BaseModel):
-    habit: str
-    frequency: str
-
-class HabitMark(BaseModel):
-    habit: str
 
 @app.get("/habits/{username}")
 def list_habits(username: str):
+    """Get all habits for a specific user, plus a motivational quote."""
     return get_user_habits_with_quote(username)
 
-@app.post("/habits/{username}")
-def create_habit(username: str, data: HabitCreate):
-    response, status = create_user_habit(username, data.habit, data.frequency)
-    if status != 201:
-        raise HTTPException(status_code=status, detail=response["error"])
-    return response
 
-@app.post("/habits/{username}/mark_done")
-def mark_done(username: str, data: HabitMark):
-    message = mark_habit_done(username, data.habit)
-    return {"message": message}
+@app.post("/habits/{username}")
+async def create_habit(username: str, request: Request):
+    """Add a new habit for a specific user."""
+    data = await request.json()
+    habit_name = data.get("habit")
+    frequency = data.get("frequency")
+
+    response, status = create_user_habit(username, habit_name, frequency)
+    return JSONResponse(content=response, status_code=status)
+
 
 @app.post("/a2a/habits")
-def a2a_habits(body: dict = Body(...)):
-    """JSON-RPC 2.0 compatible endpoint."""
+async def a2a_habits(request: Request):
+    """Handle A2A JSON-RPC requests (Telex integration)."""
     try:
+        body = await request.json()
+
+        # ✅ Basic JSON-RPC structure validation
         if body.get("jsonrpc") != "2.0" or "id" not in body or "method" not in body:
-            raise HTTPException(status_code=400, detail="Invalid JSON-RPC request")
+            return JSONResponse({
+                "jsonrpc": "2.0",
+                "id": body.get("id"),
+                "error": {
+                    "code": -32600,
+                    "message": "Invalid Request: jsonrpc must be '2.0', id and method are required"
+                }
+            }, status_code=400)
 
         rpc_id = body["id"]
         method = body["method"]
         params = body.get("params", {})
-
         username = params.get("username")
-        if not username:
-            raise HTTPException(status_code=400, detail="Missing 'username' parameter")
 
+        if not username:
+            return JSONResponse({
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "error": {"code": -32602, "message": "Missing 'username' parameter"}
+            }, status_code=400)
+
+        # ✅ Handle supported methods
         if method == "habits/get":
             result = get_user_habits_with_quote(username)
+
         elif method == "habits/add":
-            habit = params.get("habit")
+            habit_name = params.get("habit")
             frequency = params.get("frequency")
-            if not habit or not frequency:
-                raise HTTPException(status_code=400, detail="Missing 'habit' or 'frequency' parameter")
-            result, _ = create_user_habit(username, habit, frequency)
+            if not habit_name or not frequency:
+                return JSONResponse({
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "error": {"code": -32602, "message": "Missing 'habit' or 'frequency' parameter"}
+                }, status_code=400)
+            result, _ = create_user_habit(username, habit_name, frequency)
+
         elif method == "habits/mark_done":
-            habit = params.get("habit")
-            if not habit:
-                raise HTTPException(status_code=400, detail="Missing 'habit' parameter")
-            message = mark_habit_done(username, habit)
+            habit_name = params.get("habit")
+            if not habit_name:
+                return JSONResponse({
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "error": {"code": -32602, "message": "Missing 'habit' parameter"}
+                }, status_code=400)
+            message = mark_habit_done(username, habit_name)
             result = {"message": message}
+
         else:
-            raise HTTPException(status_code=404, detail=f"Method '{method}' not found")
+            return JSONResponse({
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "error": {"code": -32601, "message": f"Method '{method}' not found"}
+            }, status_code=404)
 
-        return {"jsonrpc": "2.0", "id": rpc_id, "result": result}
+        # ✅ Return success response in JSON-RPC format
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": rpc_id,
+            "result": result
+        })
 
-    except HTTPException as e:
-        return {"jsonrpc": "2.0", "id": body.get("id"), "error": {"code": e.status_code, "message": e.detail}}
     except Exception as e:
-        return {"jsonrpc": "2.0", "id": body.get("id"), "error": {"code": -32603, "message": "Internal error", "data": str(e)}}
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": body.get("id") if "body" in locals() else None,
+            "error": {"code": -32603, "message": "Internal error", "data": str(e)}
+        }, status_code=500)
 
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
 
+@app.post("/habits/{username}/mark_done")
+async def mark_done(username: str, request: Request):
+    """Mark a habit as done."""
+    data = await request.json()
+    habit = data.get("habit")
+
+    if not habit:
+        raise HTTPException(status_code=400, detail="Please provide the saved habit name.")
+
+    message = mark_habit_done(username, habit)
+    return {"message": message}
