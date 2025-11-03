@@ -53,7 +53,7 @@ def mark_habit_done(username, habit):
     conn.commit()
 
     message = (
-        f"✅ '{habit}' marked as done for {username}."
+        f"'{habit}' marked as done for {username}."
         if cursor.rowcount > 0
         else f"⚠️ No habit named '{habit}' found for {username}."
     )

@@ -4,12 +4,12 @@ A simple **AI-powered habit tracking API** built with **FastAPI**, **SQLite**, a
 
 ### 🚀 Features
 
-✅ Add, list, and mark habits as done
-✅ JSON-RPC 2.0 compatible endpoint for programmatic integrations
-✅ AI helper that fetches motivational quotes from [ZenQuotes API](https://zenquotes.io/)
-✅ Smart reminders based on habit frequency (daily, weekly, biweekly, etc.)
-✅ SQLite lightweight persistence
-✅ Simple and clean API design using FastAPI
+✅ Add, list, and mark habits as done</br>
+✅ JSON-RPC 2.0 compatible endpoint for programmatic integrations</br>
+✅ AI helper that fetches motivational quotes from [ZenQuotes API](https://zenquotes.io/)</br>
+✅ Smart reminders based on habit frequency (daily, weekly, biweekly, etc.)</br>
+✅ SQLite lightweight persistence</br>
+✅ Simple and clean API design using FastAPI</br>
 
 ---
 
